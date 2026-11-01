@@ -4,6 +4,7 @@
 
 打开任意本地文件夹后可以：
 
+- **VSCode 风格类型图标**：TypeScript / JavaScript / JSON / Markdown / 图片 / 压缩包 / Office / Shell / 配置 / 锁文件等按形状与颜色区分；文件夹有开合两态，`.git`、`node_modules`、`src`、`dist`、`docs`、`config` 使用专属图标（图标子集来自 MIT 许可的 Material Icon Theme，见 [docs/THIRD_PARTY_NOTICES.md](docs/THIRD_PARTY_NOTICES.md)）
 - 树形浏览（懒加载、目录优先排序、隐藏文件可见、手动刷新）
 - 右键菜单：复制绝对路径 / 复制相对路径、重命名（行内编辑）、新建文件、新建文件夹、删除（二次确认后永久删除）、复制 / 粘贴（冲突策略：保留两者 / 跳过 / 覆盖）、在 Finder/资源管理器中显示
 - 键盘操作：↑/↓ 移动、→/← 展开折叠、Enter 打开、F2 重命名、Delete 删除、Cmd/Ctrl+C / V 复制粘贴、Esc 关闭浮层
@@ -66,7 +67,7 @@ git clone https://github.com/wx-98/DSH-folder.git dsh-folder
 - 暂不支持拖拽移动、多选批量、外部变更自动监听、全文搜索（后续里程碑）；
 - “用外部应用打开”依赖宿主提供 Session Remote，不可用时菜单项隐藏。
 
-更多设计细节与验收记录见 [docs/folder-explorer-plugin.md](docs/folder-explorer-plugin.md)。
+更多设计细节与验收记录见 [docs/folder-explorer-plugin.md](docs/folder-explorer-plugin.md)；图标机制与清单见 [docs/file-icons.md](docs/file-icons.md)。
 
 ## 仓库结构
 
