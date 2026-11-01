@@ -1,0 +1,46 @@
+{
+  "name": "@local/dsh-folder-explorer",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Folder explorer plugin for the DeepSeek Harness Web GUI: a VSCode-like file tree in the right sidebar with open folder, copy path, rename, create, delete and copy/paste.",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg"
+  },
+  "files": [
+    "index.js",
+    "lib/ops.js",
+    "client.js",
+    "cordis.patch.yml",
+    "locale/*.json",
+    "icon.svg"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-sidebar-right",
+        "@deepseek-ai/dsh-client-ui-session",
+        "@deepseek-ai/dsh-api-session-controller",
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-shortcuts"
+      ]
+    }
+  },
+  "scripts": {
+    "test": "node --test test/*.test.js"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/wx-98/DSH-folder.git"
+  },
+  "homepage": "https://github.com/wx-98/DSH-folder#readme"
+}

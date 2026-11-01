@@ -1,0 +1,7 @@
+# Local / development-only material (never published)
+.DS_Store
+.dsh/
+openspec/
+test/
+node_modules/
+*.log
