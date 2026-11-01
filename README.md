@@ -18,16 +18,22 @@
 
 1. 打开 DSH Web GUI，左侧 **Plugins**；
 2. 点击 **Add plugin** → **Install a third-party plugin**；
-3. 在包/地址栏填入本仓库的 Git 地址：
+3. 在包/地址栏填入本仓库的 Git 地址（以下两种写法等价，任选其一）：
 
    ```
    https://github.com/wx-98/DSH-folder.git
+   ```
+
+   ```
+   github:wx-98/DSH-folder
    ```
 
 4. 安装完成后启用该 bundle 的 row（开关打开）；
 5. 打开任意会话 → 右侧栏标签向导 → **Folder Explorer**。
 
 安装由 DSH profile 的插件管理器执行（本地 profile 目录：`~/.dsh/profiles/<profile>`）。仓库根目录就是插件包根目录，`package.json` 已声明 `dsh.bundle.patch` 与 `dsh.client`，因此 Git 地址可以直接安装。
+
+> 已验证：以上 Git 地址可被 pnpm 直接解析安装（从 GitHub 拉取代码，无 build 步骤、无 npm 运行时依赖）。
 
 > 首次安装需要能访问 GitHub。如果网络受限，可以先 clone 仓库，再用 **本地绝对路径** 安装（见下）。
 
