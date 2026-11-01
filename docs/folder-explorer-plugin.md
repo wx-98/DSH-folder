@@ -63,8 +63,8 @@ DSH Web/Desktop GUI 目前只提供**只读**的文件浏览能力：右侧栏�
 
 ```text
 DSH-folder/
-├── package.json          # @local/dsh-folder-explorer；exports "." / "./client" / locale / icon
-├── cordis.patch.yml      # - insert: [{ id: folder-explorer, name: '@local/dsh-folder-explorer' }]
+├── package.json          # dsh-folder-explorer；exports "." / "./client" / locale / icon
+├── cordis.patch.yml      # - insert: [{ id: folder-explorer, name: 'dsh-folder-explorer' }]
 ├── index.js              # Host 半边：apply(ctx) 注册 /folder-explorer/* 路由
 ├── lib/ops.js            # 纯函数：路径校验、list/stat/create/rename/delete/copy/move/reveal
 ├── client.js             # Client 半边：window.__ModuleLoader__.load({ id, factory(require) { ... } })
@@ -81,7 +81,7 @@ DSH-folder/
 
 ```json
 {
-  "name": "@local/dsh-folder-explorer",
+  "name": "dsh-folder-explorer",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -165,7 +165,7 @@ Browser (DSH Web GUI)                                   Host (Electron 主进程
 
 ```js
 window.__ModuleLoader__.load({
-  id: '@local/dsh-folder-explorer',
+  id: 'dsh-folder-explorer',
   factory(require) {
     const React = require('react')
     const h = React.createElement
@@ -275,7 +275,7 @@ window.__ModuleLoader__.load({
 > 实现状态：M1 已实现并通过静态检查、42 项本地自动化测试、服务端探测与 GUI 人工验收（记录见下一节）。
 ## 10. 验收记录（2026-11-01）
 
-- **安装**：通过 GUI Plugins → Add plugin → 本地绝对路径安装成功；profile `~/.dsh/profiles/desktop` 的 dependencies 为 `link:/Volumes/E/code/DSH/folder`，`dsh.profile.bundles` 已追加 `@local/dsh-folder-explorer`。
+- **安装**：通过 GUI Plugins → Add plugin → 本地绝对路径安装成功；profile `~/.dsh/profiles/desktop` 的 dependencies 为 `link:/Volumes/E/code/DSH/folder`，`dsh.profile.bundles` 已追加 `dsh-folder-explorer`。
 - **服务端探测**：`GET /folder-explorer/list`、`/browse`、未知 `/folder-explorer/*` 均返回 **401**（连接信任栅栏生效，证明 Host 半边已激活且路由已注册；未注册应为 404）；client bundle（134 KB）以 200 返回，且出现在 `/plugins/events` 的 boot graph 中（含 inject 列表与立即加载标记）。
 - **HMR**：对 `client.js` 触发 mtime 变化后，`/plugins/events` 收到该插件的 `rebuilt` 帧并更新 graph revision，验证浏览器半边可原地热替换。
 - **自动化**：`node --check` 全过；`node --test test/*.test.js` **42/42**；Host 假 ctx + 真实 HTTP 集成冒烟 82 断言（全部路由、401 栅栏无副作用、405/413/415/404、outside-root、串行队列、disposer 生命周期）通过。

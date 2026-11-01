@@ -3,13 +3,13 @@
 // module table's "react" baseline. Registers a right-sidebar tab type
 // (kind: folder-explorer), its lazily loaded file-tree body and its title chip.
 window.__ModuleLoader__.load({
-  id: "@local/dsh-folder-explorer",
+  id: "dsh-folder-explorer",
   factory(require) {
     const React = require("react");
     const h = React.createElement;
 
     /** This implementation's identity in the tab system and the body/title slot key. */
-    const ID = "@local/dsh-folder-explorer";
+    const ID = "dsh-folder-explorer";
     /** The tab kind this package owns. */
     const KIND = "folder-explorer";
     /** Locale namespace used for every visible string. */

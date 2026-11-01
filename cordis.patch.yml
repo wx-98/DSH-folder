@@ -3,4 +3,4 @@
 # half is discovered from this package's `dsh.client` declaration.
 - insert:
     - id: folder-explorer
-      name: '@local/dsh-folder-explorer'
+      name: 'dsh-folder-explorer'

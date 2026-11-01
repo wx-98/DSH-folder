@@ -2,6 +2,8 @@
 
 一个 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（DSH）Web/Desktop 插件：在右侧栏提供类 VSCode 的文件夹资源管理器。
 
+**插件类型：** Cordis 插件 bundle（双面：Host 半边 + Web Client 半边），不是皮肤 / TUI / 桌面客户端。
+
 打开任意本地文件夹后可以：
 
 - **VSCode 风格类型图标**：TypeScript / JavaScript / JSON / Markdown / 图片 / 压缩包 / Office / Shell / 配置 / 锁文件等按形状与颜色区分；文件夹有开合两态，`.git`、`node_modules`、`src`、`dist`、`docs`、`config` 使用专属图标（图标子集来自 MIT 许可的 Material Icon Theme，见 [docs/THIRD_PARTY_NOTICES.md](docs/THIRD_PARTY_NOTICES.md)）
@@ -14,30 +16,33 @@
 
 插件是一个**双面 bundle**：Host 半边（`index.js`）注册 `/folder-explorer/*` HTTP 路由完成受控的本地文件操作，浏览器半边（`client.js`）在右侧栏注册 `folder-explorer` 标签类型。无构建步骤、无 npm 运行时依赖。
 
-## 安装（从 GitHub）
+## 安装
 
-前置：DSH Web/Desktop **0.2.1-rc.5**。
+前置：DSH Web/Desktop **0.2.1-rc.5**。插件声明了 `dsh.bundle.patch` 与 `dsh.client`，支持 GitHub、npm 与本地目录三种安装方式。
 
-1. 打开 DSH Web GUI，左侧 **Plugins**；
-2. 点击 **Add plugin** → **Install a third-party plugin**；
-3. 在包/地址栏填入本仓库的 Git 地址（以下两种写法等价，任选其一）：
+### 从 GitHub 安装
 
-   ```
-   https://github.com/wx-98/DSH-folder.git
-   ```
+GUI：Plugins → Add plugin → Install a third-party plugin → 填 `github:wx-98/DSH-folder`（或 `https://github.com/wx-98/DSH-folder.git`）→ 安装后启用 bundle 的 row。
 
-   ```
-   github:wx-98/DSH-folder
-   ```
+CLI（`dsh` 在 PATH 中时）：
 
-4. 安装完成后启用该 bundle 的 row（开关打开）；
-5. 打开任意会话 → 右侧栏标签向导 → **Folder Explorer**。
+```bash
+dsh plugin --profile <profile> add github:wx-98/DSH-folder
+```
 
-安装由 DSH profile 的插件管理器执行（本地 profile 目录：`~/.dsh/profiles/<profile>`）。仓库根目录就是插件包根目录，`package.json` 已声明 `dsh.bundle.patch` 与 `dsh.client`，因此 Git 地址可以直接安装。
+### 从 npm 安装
 
-> 已验证：以上 Git 地址可被 pnpm 直接解析安装（从 GitHub 拉取代码，无 build 步骤、无 npm 运行时依赖）。
+npm 包名：`dsh-folder-explorer`（无构建步骤、无运行时依赖）。
 
-> 首次安装需要能访问 GitHub。如果网络受限，可以先 clone 仓库，再用 **本地绝对路径** 安装（见下）。
+GUI：Plugins → Add plugin → 包名 `dsh-folder-explorer`。
+
+CLI：
+
+```bash
+dsh plugin --profile <profile> add dsh-folder-explorer
+```
+
+> 仓库已按 npm 包规范准备（`private` 已移除、`files` 白名单、`publishConfig.access=public`）。发布状态以 [npm registry](https://www.npmjs.com/package/dsh-folder-explorer) 页面为准。
 
 ### 本地开发安装
 
@@ -69,6 +74,12 @@ git clone https://github.com/wx-98/DSH-folder.git dsh-folder
 - “用外部应用打开”依赖宿主提供 Session Remote，不可用时菜单项隐藏。
 
 更多设计细节与验收记录见 [docs/folder-explorer-plugin.md](docs/folder-explorer-plugin.md)；图标机制与清单见 [docs/file-icons.md](docs/file-icons.md)；「添加到对话」说明见 [docs/add-to-chat.md](docs/add-to-chat.md)。
+
+## 社区收录
+
+- GitHub topic：[`dsh-plugin`](https://github.com/topics/dsh-plugin)
+- 列表收录：[awesome-dsh-plugin](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin)（PR 提交后由维护者审核）
+- 注册登记：[DSH Plugin Registry（dshplugin.world）](https://dshplugin.world/submit) 的 Submit 流程通过仓库 issue + 官方 discussions ping 提交
 
 ## 仓库结构
 
