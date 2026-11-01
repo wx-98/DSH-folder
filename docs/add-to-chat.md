@@ -33,3 +33,9 @@ Folder Explorer 现在支持把文件/文件夹作为引用直接加入当前会
 - 只支持**整文件引用**；「在预览中选中文本/行范围 → 添加到对话」需要 DSH 上游给 documentpreview 暴露 selection API（0.2.1-rc.5 无公开 API，且插件规范禁止读取其他插件 DOM），或本插件自建带选区的预览渲染器——列为后续里程碑。
 - 不提供引用 pin/持久固定、多选批量添加、拖拽到输入框。
 - `addFiles` 等插入 seam 属实现级接口（官方拖拽路径在用），DSH 升级需回归；失败会自动降级到纯文本插入。
+## 验收记录（2026-11-01）
+
+- **本地自动化**：`node --check` 通过；`node --test test/*.test.js` **48/48**（45 项既有 + 3 项添加到对话：mention/chip、file address 解析、插入降级阶梯）；VM 断言覆盖 buildMention 16 例、buildChip、parseFileAddress、insertChatReference 12 场景（addFiles 只调用一次、不调用 submit、异常降级）。
+- **静态约束**：client.js 无新增 `fetch` / `workspaceFiles.read` / `.submit(` 调用；体积 168,022 → **178,022 bytes**（+10,000 bytes，目标 ≤10 KB）。
+- **GUI 验收（用户确认）**：文件树文件/文件夹右键添加、预览头部按钮、预览 tab 右键、工作区外绝对路径（`/tmp/add-to-chat-sample`）、含空格路径（`@"/tmp/... my file.ts"`）、引用芯片点击打开预览、发送后消息显示 `@path`、草稿保留且不自动发送、控制台无红色报错 —— 均正常。
+- **运行中集成**：boot graph 中插件更新（bundle 178,105 bytes 含 addToChat），服务端 HMR `rebuilt` 生效；远端 GitHub `main` 已包含该版本（提交 `f9d413d`）。
