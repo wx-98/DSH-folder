@@ -43,6 +43,8 @@ dsh plugin --profile <profile> add dsh-folder-explorer
 ```
 
 > 仓库已按 npm 包规范准备（`private` 已移除、`files` 白名单、`publishConfig.access=public`）。发布状态以 [npm registry](https://www.npmjs.com/package/dsh-folder-explorer) 页面为准。
+>
+> 维护者发布：配置仓库 secret `NPM_TOKEN`（npm automation token）后，可通过 `.github/workflows/publish-npm.yml` 的 workflow_dispatch 或 GitHub Release 发布；也可本地 `npm login && npm publish --access public`。
 
 ### 本地开发安装
 
