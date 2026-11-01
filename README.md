@@ -77,9 +77,9 @@ git clone https://github.com/wx-98/DSH-folder.git dsh-folder
 
 ## 社区收录
 
-- GitHub topic：[`dsh-plugin`](https://github.com/topics/dsh-plugin)
-- 列表收录：[awesome-dsh-plugin](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin)（PR 提交后由维护者审核）
-- 注册登记：[DSH Plugin Registry（dshplugin.world）](https://dshplugin.world/submit) 的 Submit 流程通过仓库 issue + 官方 discussions ping 提交
+- GitHub topic：[`dsh-plugin`](https://github.com/topics/dsh-plugin)（已设置）
+- 列表收录：[awesome-dsh-plugin PR #11102](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin/pull/11102)（提交于 2026-11-01，仓库创建未满 1 天，等待 CI/维护者复核）
+- 注册登记：[DSH Plugin Registry（dshplugin.world）](https://dshplugin.world/submit) 的 Submit 流程：仓库 issue [#1](https://github.com/wx-98/DSH-folder/issues/1) 已提交；官方 discussions ping 受 deepseek-ai 组织 OAuth App 访问限制，待手动补充
 
 ## 仓库结构
 
