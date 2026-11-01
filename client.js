@@ -25,6 +25,8 @@ window.__ModuleLoader__.load({
     const STYLE_TAG = ID + "/styles";
     /** The native desktop path handlers live here when the Host offers the Session Remote. */
     let remoteSession = null;
+    /** The plugin root context once the optional conversation injection has landed. */
+    let clientCtx = null;
 
     // ---------------------------------------------------------------------------
     // Small pure helpers
@@ -149,10 +151,6 @@ window.__ModuleLoader__.load({
         const rightName = right && typeof right.name === "string" ? right.name : "";
         return collator.compare(leftName, rightName);
       });
-    }
-
-    function compareNames(left, right) {
-      return collator.compare(String(left), String(right));
     }
 
     /** Component-encode one id or path segment, keeping ":" literal for drive letters. */
@@ -379,6 +377,112 @@ window.__ModuleLoader__.load({
       return rows;
     }
 
+    function toPosix(value) {
+      return typeof value === "string" ? value.replace(/\\/g, "/") : "";
+    }
+
+    function relativeInsideCwd(cwd, absPath) {
+      if (typeof cwd !== "string" || cwd === "" || typeof absPath !== "string" || absPath === "") return null;
+      const root = toPosix(cwd).replace(/\/+$/, "");
+      const target = toPosix(absPath);
+      if (root === "" || target === "") return null;
+      if (target === root) return "";
+      const prefix = root === "/" ? "/" : root + "/";
+      return target.startsWith(prefix) ? target.slice(prefix.length) : null;
+    }
+
+    function buildMention(absPath, cwd, type) {
+      if (typeof absPath !== "string" || absPath === "") return null;
+      const target = toPosix(absPath);
+      if (target === "" || /[\u0000-\u001f\u007f-\u009f"]/u.test(target)) return null;
+      const relative = typeof cwd === "string" && cwd !== "" ? relativeInsideCwd(cwd, target) : null;
+      let body = relative !== null && relative !== "" ? relative : target;
+      if (type === "directory" && !body.endsWith("/")) body += "/";
+      return /\s/u.test(body) ? '@"' + body + '"' : "@" + body;
+    }
+
+    function buildChip(absPath, cwd, type) {
+      const mention = buildMention(absPath, cwd, type);
+      const name = mention === null ? "" : baseName(toPosix(absPath).replace(/\/+$/, ""));
+      if (name === "") return null;
+      const directory = type === "directory";
+      return { source: "reference", ref: mention, label: directory ? name + "/" : name, appearance: directory ? "folder" : "file", clipboardText: mention };
+    }
+
+    function parseFileAddress(contentId) {
+      const prefix = "dsh-resource://file/session/";
+      if (typeof contentId !== "string" || !contentId.startsWith(prefix)) return null;
+      const rest = contentId.slice(prefix.length);
+      const slash = rest.indexOf("/");
+      if (slash < 1) return null;
+      try {
+        const sessionId = decodeURIComponent(rest.slice(0, slash));
+        const path = rest.slice(slash + 1).split("/").map(decodeURIComponent).join("/");
+        return sessionId === "" || path === "" || path === "/" ? null : { sessionId: sessionId, path: path };
+      } catch (error) {
+        return null;
+      }
+    }
+
+    function insertChatReference(deps, request) {
+      const d = deps || {};
+      const r = request || {};
+      const type = r.type === "directory" ? "directory" : "file";
+      const chip = buildChip(r.path, d.cwd, type);
+      let shell = null;
+      try {
+        const conversation = d.conversation;
+        if (conversation && conversation.input && typeof conversation.input.shell === "function") shell = conversation.input.shell(r.sessionId);
+      } catch (error) {
+        shell = null;
+      }
+      if (shell && typeof shell.addFiles === "function" && chip) {
+        try {
+          if (shell.addFiles([chip], []) === false) return { mode: "chip", ok: false };
+          try {
+            if (typeof shell.focus === "function") shell.focus();
+          } catch (error) {}
+          return { mode: "chip", ok: true };
+        } catch (error) {}
+      }
+      try {
+        const actions = d.inputActions;
+        if (actions && typeof actions.captureInsertion === "function" && typeof actions.insertText === "function") {
+          const mention = buildMention(r.path, d.cwd, type);
+          if (mention !== null) return { mode: "text", ok: actions.insertText(mention, actions.captureInsertion()) === true };
+        }
+      } catch (error) {
+        return { mode: "unavailable", ok: false };
+      }
+      return { mode: "unavailable", ok: false };
+    }
+
+    function chatInsertOutcome(t, result, path, cwd, type) {
+      if (result && result.ok === true) return { tone: "info", text: format(t("addToChat.added"), { name: baseName(toPosix(path)) || path }) };
+      const key = buildMention(path, cwd, type) === null ? "addToChat.invalidPath" : result && result.mode === "unavailable" ? "addToChat.unavailable" : "addToChat.failed";
+      return { tone: "error", text: t(key) };
+    }
+
+    function getRootService(name) {
+      try {
+        return clientCtx !== null && typeof clientCtx.get === "function" ? clientCtx.get(name) : null;
+      } catch (error) {
+        return null;
+      }
+    }
+
+    function sessionCwdFromRoot(sessionId) {
+      try {
+        const sessions = getRootService("sessions");
+        const byId = sessions && sessions.list && typeof sessions.list.getSnapshot === "function" ? sessions.list.getSnapshot().byId : null;
+        const session = byId ? byId[sessionId] : null;
+        return session && typeof session.cwd === "string" ? session.cwd : "";
+      } catch (error) {
+        return "";
+      }
+    }
+
+
     // ---------------------------------------------------------------------------
     // Dictionaries: the Chinese dictionary is the key-set source of truth.
     // ---------------------------------------------------------------------------
@@ -417,14 +521,12 @@ window.__ModuleLoader__.load({
       "menu.copyRelativePath": "复制相对路径",
       "dialog.cancel": "取消",
       "dialog.create": "创建",
-      "dialog.rename": "重命名",
       "dialog.delete": "删除",
       "dialog.chooseFolder": "选择此文件夹",
       "dialog.close": "关闭",
       "dialog.working": "处理中…",
       "dialog.createFileTitle": "新建文件",
       "dialog.createFolderTitle": "新建文件夹",
-      "dialog.renameTitle": "重命名",
       "dialog.nameLabel": "名称",
       "dialog.namePlaceholder": "输入名称",
       "dialog.location": "位置：{path}",
@@ -465,7 +567,6 @@ window.__ModuleLoader__.load({
       "toast.pasteDone": "粘贴完成",
       "toast.separator": "，",
       "toast.revealed": "已在文件管理器中显示",
-      "toast.revealFailed": "无法显示文件位置",
       "toast.openedWith": "已用 {app} 打开",
       "toast.openWithFailed": "无法用外部应用打开",
       "toast.noApplications": "没有可用的外部应用",
@@ -487,6 +588,11 @@ window.__ModuleLoader__.load({
       "errors.busy": "另一个文件操作正在进行，请稍后再试。",
       "errors.unsupported": "此操作不受支持。",
       "errors.internal": "内部错误，请重试。",
+      "addToChat.menu": "添加到对话",
+      "addToChat.added": "已添加 {name}",
+      "addToChat.unavailable": "暂时无法添加",
+      "addToChat.failed": "添加失败",
+      "addToChat.invalidPath": "路径无效",
     };
 
     const en = {
@@ -523,14 +629,12 @@ window.__ModuleLoader__.load({
       "menu.copyRelativePath": "Copy Relative Path",
       "dialog.cancel": "Cancel",
       "dialog.create": "Create",
-      "dialog.rename": "Rename",
       "dialog.delete": "Delete",
       "dialog.chooseFolder": "Choose This Folder",
       "dialog.close": "Close",
       "dialog.working": "Working…",
       "dialog.createFileTitle": "New File",
       "dialog.createFolderTitle": "New Folder",
-      "dialog.renameTitle": "Rename",
       "dialog.nameLabel": "Name",
       "dialog.namePlaceholder": "Enter a name",
       "dialog.location": "Location: {path}",
@@ -571,7 +675,6 @@ window.__ModuleLoader__.load({
       "toast.pasteDone": "Paste finished",
       "toast.separator": ", ",
       "toast.revealed": "Shown in the file manager",
-      "toast.revealFailed": "Could not show the file location",
       "toast.openedWith": "Opened with {app}",
       "toast.openWithFailed": "Could not open with an external application",
       "toast.noApplications": "No external application is available",
@@ -593,6 +696,11 @@ window.__ModuleLoader__.load({
       "errors.busy": "Another file operation is in progress; try again shortly.",
       "errors.unsupported": "That operation is not supported.",
       "errors.internal": "Internal error; please try again.",
+      "addToChat.menu": "Add to Chat",
+      "addToChat.added": "Added {name}",
+      "addToChat.unavailable": "Unable to add",
+      "addToChat.failed": "Add failed",
+      "addToChat.invalidPath": "Bad path",
     };
 
     /** Translation fallback used only if the locale service did not inject one. */
@@ -741,6 +849,12 @@ window.__ModuleLoader__.load({
         h("path", { d: "m5.4 5.4 9.2 9.2M14.6 5.4l-9.2 9.2", stroke: "currentColor", strokeWidth: "1.4", strokeLinecap: "round" }));
     }
 
+
+    function AddToChatIcon() {
+      return h("svg", { width: 16, height: 16, viewBox: "0 0 20 20", fill: "none", "aria-hidden": "true" },
+        h("path", { d: "M3.3 4.3h13.4v9H10.4L6.1 16.4v-3.1H3.3z", stroke: "currentColor", strokeWidth: "1.3", strokeLinejoin: "round" }),
+        h("path", { d: "M10 6.6v3.9M8.05 8.55h3.9", stroke: "currentColor", strokeWidth: "1.3", strokeLinecap: "round" }));
+    }
 
     // Generated icon data for client.js — DO NOT EDIT BY HAND.
     // File + folder icons from Material Icon Theme (MIT); folder open variants are
@@ -2304,6 +2418,77 @@ window.__ModuleLoader__.load({
       return undefined;
     }
 
+    function useSessionCwd(useSessions, sessionId) {
+      const useStore = typeof useSessions === "function" ? useSessions : NO_SESSIONS;
+      return useStore(function (state) {
+        const byId = state ? state.byId : null;
+        const session = byId && sessionId !== null && sessionId !== undefined ? byId[sessionId] : null;
+        return session ? session.cwd : undefined;
+      });
+    }
+
+    function AddToChatDocumentAction(rawProps) {
+      const props = rawProps || {};
+      const sessionId = props.sessionId;
+      const cwdHook = useSessionCwd(props.useSessions, sessionId);
+      const t = typeof props.t === "function" ? props.t : defaultTranslate;
+      const [toast, setToast] = React.useState(null);
+      React.useEffect(installStyles, []);
+      React.useEffect(function () {
+        if (toast === null) return undefined;
+        const timer = setTimeout(setToast, 3600, null);
+        return function () {
+          clearTimeout(timer);
+        };
+      }, [toast]);
+      function handleClick() {
+        const absolutePath = typeof props.absolutePath === "string" ? props.absolutePath : "";
+        const cwd = typeof cwdHook === "string" && cwdHook !== "" ? cwdHook : sessionCwdFromRoot(sessionId);
+        const outcome = insertChatReference({ conversation: getRootService("conversation"), inputActions: props.inputActions, cwd: cwd }, { sessionId: sessionId, path: absolutePath, type: "file" });
+        setToast(chatInsertOutcome(t, outcome, absolutePath, cwd, "file"));
+      }
+      return h(React.Fragment, null,
+        h("button", { type: "button", className: "dfe-tool", title: t("addToChat.menu"), "aria-label": t("addToChat.menu"), onClick: handleClick }, h(AddToChatIcon)),
+        toast ? h("div", { className: "dfe-toast", role: "status", "aria-live": "polite" }, toast.text) : null);
+    }
+
+    function AddToChatTabMenuAction(rawProps) {
+      const props = rawProps || {};
+      const tab = props.tab;
+      const parsed = parseFileAddress(tab && typeof tab.contentId === "string" ? tab.contentId : "");
+      const sessionId = parsed !== null ? parsed.sessionId : props.sessionId;
+      const cwd = parsed !== null ? sessionCwdFromRoot(sessionId) : "";
+      const t = typeof props.t === "function" ? props.t : defaultTranslate;
+      const [notice, setNotice] = React.useState(null);
+      React.useEffect(function () {
+        installStyles();
+        if (!notice) return undefined;
+        const timer = setTimeout(function () {
+          if (typeof props.dismiss === "function") props.dismiss();
+        }, 2800);
+        return function () {
+          clearTimeout(timer);
+        };
+      }, [notice]);
+      if (parsed === null || !tab || tab.kind !== "text") return null;
+      function handleClick() {
+        let outcome = null;
+        try {
+          outcome = insertChatReference({ conversation: getRootService("conversation"), inputActions: props.inputActions, cwd: cwd }, { sessionId: sessionId, path: parsed.path, type: "file" });
+        } catch (error) {
+          outcome = null;
+        }
+        if (!outcome || outcome.ok !== true) {
+          setNotice(chatInsertOutcome(t, outcome, parsed.path, cwd, "file").text);
+          return;
+        }
+        if (typeof props.dismiss === "function") props.dismiss();
+      }
+      return h(React.Fragment, null,
+        h("button", { type: "button", role: "menuitem", className: "dfe-menu-item", onClick: handleClick }, h(AddToChatIcon), h("span", null, t("addToChat.menu"))),
+        notice ? h("div", { role: "status", "aria-live": "polite" }, notice) : null);
+    }
+
     /**
      * The explorer body: toolbar, lazily loaded tree, row menu, dialogs, toasts.
      * All hooks stay unconditional; every action is declared inside the component
@@ -2316,15 +2501,7 @@ window.__ModuleLoader__.load({
       const useTabInfo = typeof props.useTabInfo === "function" ? props.useTabInfo : NO_TAB_INFO;
       const tabInfo = useTabInfo();
       const providedT = typeof props.t === "function" ? props.t : defaultTranslate;
-      const cwd = useSessions(function (state) {
-        if (state === null || state === undefined) return undefined;
-        if (sessionId === null || sessionId === undefined) return undefined;
-        const byId = state.byId;
-        if (byId === null || byId === undefined) return undefined;
-        const session = byId[sessionId];
-        if (session === null || session === undefined) return undefined;
-        return session.cwd;
-      });
+      const cwd = useSessionCwd(useSessions, sessionId);
 
       const treeRef = React.useRef(null);
       const mountedRef = React.useRef(false);
@@ -3434,6 +3611,17 @@ window.__ModuleLoader__.load({
           });
           separator();
         }
+        if (nodeType === "file" || nodeType === "directory") {
+          separator();
+          add("add-to-chat", tt("addToChat.menu"), function () {
+            const chatType = node.type === "directory" ? "directory" : "file";
+            let chatCwd = typeof cwd === "string" ? cwd : "";
+            if (chatCwd === "") chatCwd = sessionCwdFromRoot(sessionId);
+            const outcome = insertChatReference({ conversation: getRootService("conversation"), inputActions: props.inputActions, cwd: chatCwd }, { sessionId: sessionId, path: node.path, type: chatType });
+            const feedback = chatInsertOutcome(tt, outcome, node.path, chatCwd, chatType);
+            showToast(feedback.text, feedback.tone);
+          });
+        }
         if (nodeType !== "file" && nodeType !== "directory" && nodeType !== "other") return items;
         add("copy-path", tt("menu.copyPath"), function () {
           copyPathFor(node, false);
@@ -3695,6 +3883,9 @@ window.__ModuleLoader__.load({
           remoteSession = null;
         }
       });
+      ctx.inject(["conversation"], function (scope) {
+        clientCtx = scope;
+      });
       ctx.effect(function () {
         return ctx.sidebarRightTabs.register({
           id: ID,
@@ -3725,6 +3916,18 @@ window.__ModuleLoader__.load({
           return ctx.slots.register({ name: TITLE_SLOT, key: ID, locale: NS }, ExplorerTitle);
         });
       }, "folder-explorer: title");
+      ctx.effect(function () {
+        const disposers = [["sidebar.right.tab.document.actions", AddToChatDocumentAction], ["sidebar.right.tab.menu.item", AddToChatTabMenuAction]].map(function (seat) {
+          return ctx.slots.inject(seat[0], function () {
+            return ctx.slots.register({ name: seat[0], id: "folder-explorer.add-to-chat", locale: NS }, seat[1]);
+          });
+        });
+        return function () {
+          disposers.forEach(function (dispose) {
+            dispose();
+          });
+        };
+      }, "folder-explorer: add-to-chat slots");
     }
 
     return {
@@ -3732,7 +3935,7 @@ window.__ModuleLoader__.load({
       apply: apply,
       // Offline test hook only: undefined unless the harness explicitly opts in.
       __test: typeof window !== "undefined" && window.__DFE_TEST__ === true
-        ? { resolveIcon: resolveIcon, ICON_DEFS: ICON_DEFS, FILE_ICON_MAP: FILE_ICON_MAP, FOLDER_ICON_MAP: FOLDER_ICON_MAP }
+        ? { resolveIcon: resolveIcon, ICON_DEFS: ICON_DEFS, FILE_ICON_MAP: FILE_ICON_MAP, FOLDER_ICON_MAP: FOLDER_ICON_MAP, buildMention: buildMention, buildChip: buildChip, parseFileAddress: parseFileAddress, insertChatReference: insertChatReference }
         : undefined,
     };
   },

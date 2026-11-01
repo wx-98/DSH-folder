@@ -8,6 +8,7 @@
 - 树形浏览（懒加载、目录优先排序、隐藏文件可见、手动刷新）
 - 右键菜单：复制绝对路径 / 复制相对路径、重命名（行内编辑）、新建文件、新建文件夹、删除（二次确认后永久删除）、复制 / 粘贴（冲突策略：保留两者 / 跳过 / 覆盖）、在 Finder/资源管理器中显示
 - 键盘操作：↑/↓ 移动、→/← 展开折叠、Enter 打开、F2 重命名、Delete 删除、Cmd/Ctrl+C / V 复制粘贴、Esc 关闭浮层
+- **添加到对话（Add to Chat）**：文件树右键、已打开文件的预览头部按钮或 tab 右键，把文件/文件夹作为 `@` 引用直接放进当前会话的聊天输入框（类似 Cursor；不读取文件内容、不自动发送、保留已有草稿）
 - 点击文件用 DSH 内置文档预览打开（工作区外绝对路径同样可用）
 - 中文 / 英文文案，跟随宿主主题（深色 / 浅色）
 
@@ -67,7 +68,7 @@ git clone https://github.com/wx-98/DSH-folder.git dsh-folder
 - 暂不支持拖拽移动、多选批量、外部变更自动监听、全文搜索（后续里程碑）；
 - “用外部应用打开”依赖宿主提供 Session Remote，不可用时菜单项隐藏。
 
-更多设计细节与验收记录见 [docs/folder-explorer-plugin.md](docs/folder-explorer-plugin.md)；图标机制与清单见 [docs/file-icons.md](docs/file-icons.md)。
+更多设计细节与验收记录见 [docs/folder-explorer-plugin.md](docs/folder-explorer-plugin.md)；图标机制与清单见 [docs/file-icons.md](docs/file-icons.md)；「添加到对话」说明见 [docs/add-to-chat.md](docs/add-to-chat.md)。
 
 ## 仓库结构
 
