@@ -42,7 +42,7 @@ CLI：
 dsh plugin --profile <profile> add dsh-folder-explorer
 ```
 
-> 仓库已按 npm 包规范准备（`private` 已移除、`files` 白名单、`publishConfig.access=public`）。发布状态以 [npm registry](https://www.npmjs.com/package/dsh-folder-explorer) 页面为准。
+> 已发布到 npm：**`dsh-folder-explorer@0.2.0`**（2026-11-01，[npm registry](https://registry.npmjs.org/dsh-folder-explorer)）。
 >
 > 维护者发布：配置仓库 secret `NPM_TOKEN`（npm automation token）后，可通过 `.github/workflows/publish-npm.yml` 的 workflow_dispatch 或 GitHub Release 发布；也可本地 `npm login && npm publish --access public`。
 
@@ -80,8 +80,8 @@ git clone https://github.com/wx-98/DSH-folder.git dsh-folder
 ## 社区收录
 
 - GitHub topic：[`dsh-plugin`](https://github.com/topics/dsh-plugin)（已设置）
-- 列表收录：[awesome-dsh-plugin PR #11102](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin/pull/11102)（提交于 2026-11-01，仓库创建未满 1 天，等待 CI/维护者复核）
-- 注册登记：[DSH Plugin Registry（dshplugin.world）](https://dshplugin.world/submit) 的 Submit 流程：仓库 issue [#1](https://github.com/wx-98/DSH-folder/issues/1) 已提交；官方 discussions ping 受 deepseek-ai 组织 OAuth App 访问限制，待手动补充
+- 列表收录：[awesome-dsh-plugin PR #11102](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin/pull/11102)（提交于 2026-11-01；唯一 CI 门槛是仓库创建未满 1 天，约 19 小时后自动复跑通过，无需重提）
+- 注册登记：[DSH Plugin Registry（dshplugin.world）](https://dshplugin.world/submit) 的 Submit 流程：仓库 issue [#1](https://github.com/wx-98/DSH-folder/issues/1) 已提交；官方 discussions ping 受 deepseek-ai 组织 OAuth App 访问限制（issue 路径与 dsh-plugin topic 抓取已覆盖提交）
 
 ## 仓库结构
 
