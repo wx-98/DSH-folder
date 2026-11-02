@@ -1,6 +1,6 @@
 {
   "name": "dsh-folder-explorer",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "type": "module",
   "description": "Folder explorer plugin for the DeepSeek Harness Web GUI: VSCode-like file tree with type icons, file operations and Add to Chat actions.",
   "exports": {

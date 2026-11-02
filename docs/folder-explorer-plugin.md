@@ -19,7 +19,7 @@ DSH Web/Desktop GUI 目前只提供**只读**的文件浏览能力：右侧栏�
 
 - 文件内容编辑（沿用现有预览/外部编辑器能力）；
 - 全文搜索、多根工作区、Git 集成；
-- 废纸篓（trash）原生桥、拖拽移动、多选批量操作、外部变更实时监听（列入后续里程碑）。
+- 废纸篓（trash）原生桥、拖拽移动、多选批量操作、跨根全局索引（列入后续里程碑）。
 
 ## 2. 需求范围
 
@@ -28,7 +28,7 @@ DSH Web/Desktop GUI 目前只提供**只读**的文件浏览能力：右侧栏�
 | 需求 | 说明 |
 |---|---|
 | 打开文件夹 | 新标签类型提供 "Open Folder…" 目录选择（Host 侧目录浏览路由），默认根为当前会话工作目录；记住上次打开的根 |
-| 树形浏览 | 右侧栏新标签页；懒加载展开、目录优先排序、隐藏文件可见、失败/空目录行内提示、手动刷新 |
+| 树形浏览 | 右侧栏新标签页；懒加载展开、目录优先排序、隐藏文件可见、失败/空目录行内提示、自动刷新（watch + 轮询降级）与手动刷新 |
 | 打开文件 | 单击文件 → 右侧栏文档预览 tab（`dsh-resource://file/session/<sessionId>/<path>`，支持工作区外绝对路径） |
 | 复制路径 | 行级右键菜单：复制绝对路径、复制相对根路径；写系统剪贴板 + 轻提示 |
 | 重命名 | 右键/F2 → 行内输入，Enter 提交、Esc 取消；冲突/非法名/权限错误给出明确提示 |
@@ -154,6 +154,7 @@ Browser (DSH Web GUI)                                   Host (Electron 主进程
 | POST | `/folder-explorer/copy` | `{ root, sources:[...], targetDir, conflict:'rename'\|'skip'\|'overwrite' }` | `{ ok:true, results:[{source,path,status}] }` | 文件+目录递归；粘贴目标位于源内拒绝 |
 | POST | `/folder-explorer/move` | `{ root, sources:[...], targetDir, conflict }` | 同上 | 优先 `rename`，`EXDEV` 降级 `copy+delete` |
 | POST | `/folder-explorer/reveal` | `{ root, path }` | `{ ok:true }` | 平台原生命令在 Finder/资源管理器中显示（macOS `open -R`、Windows `explorer /select,`、Linux `xdg-open` 父目录） |
+| GET | `/folder-explorer/watch` | query: `root`（绝对路径） | SSE：`data: {"type":"invalidate"}` 失效帧；`event: unsupported`；`event: degraded`；心跳注释 `: ping` | 递归 watch 根目录，事件 200ms 防抖；连接关闭/插件卸载时清理；并发上限 8，超出 429 |
 
 错误响应统一：`{ ok:false, code, message, details? }`。HTTP 状态映射：`bad-request|invalid-name|invalid-path` → 400；`outside-root|forbidden` → 403；`not-found` → 404；`already-exists` → 409；`internal|io-error` → 500。客户端按 `code` 分支，不解析 message。
 
@@ -196,6 +197,9 @@ window.__ModuleLoader__.load({
 
 - 每层目录：`loading | ready(entries,truncated) | failed(code)`；失败行显示错误码的人类可读文案 + 重试。
 - 操作后局部刷新：create/rename/delete/copy/move 成功后只重拉受影响目录，不重置整棵树。
+- 自动刷新（0.2.1）：根存在时经 `GET /folder-explorer/watch` 建立 SSE；收到失效事件后 250ms 防抖静默重读根与已展开层级。SSE 不可用（平台不支持递归 watch 或连续失败）时降级为 3 秒轮询，仅在页面可见且标签激活时运行，恢复时补一次刷新。
+- 浏览状态保持（0.2.1）：标签类型声明 `keepMounted: true`，切换到文档预览/其他标签/会话、折叠侧栏或停靠变化后返回时保留根、展开集合、选中行与滚动位置。
+- 菜单表面（0.2.1）：行右键与 tab 右键菜单使用不透明主题层 `--dsw-alias-bg-layer-2`，不再使用半透明菜单 token，深/浅色主题下均清晰可读。
 - 冲突策略：`rename`（默认，生成 `name copy`/`name 2`）、`skip`、`overwrite`（仅文件复制，目录覆盖需确认）。
 - 长操作（递归复制/删除）按钮进入 busy 态、禁用重复提交；Host 内变更操作串行化（单队列）避免交叉。
 
@@ -214,7 +218,7 @@ window.__ModuleLoader__.load({
 | Reveal / Open With | ✅ | Reveal 走 Host 路由；Open With 复用已有 session remote |
 | 键盘导航/快捷键 | ✅（基础） | 树内键位 |
 | 拖拽移动、多选 | ❌ M2 | |
-| 外部变更自动刷新 | ❌ M2 | M1 手动刷新 + 操作后刷新 |
+| 外部变更自动刷新 | ✅ 0.2.1 | watch（≤2s）+ 轮询降级（≤5s），并保留展开/选中/滚动 |
 | 搜索、多根、Git 状态 | ❌ | |
 
 ## 7. 开发、安装与验证
@@ -281,3 +285,14 @@ window.__ModuleLoader__.load({
 - **自动化**：`node --check` 全过；`node --test test/*.test.js` **42/42**；Host 假 ctx + 真实 HTTP 集成冒烟 82 断言（全部路由、401 栅栏无副作用、405/413/415/404、outside-root、串行队列、disposer 生命周期）通过。
 - **用户 UI 验收**：标签向导打开 Folder Explorer、树显示并可展开、右键菜单出现、新建文件夹并删除、单击文件打开预览、复制绝对路径、行内重命名、复制/粘贴冲突对话框（选“跳过”）均正常，浏览器控制台无报错。
 - **尚未逐项手动验收**：全部键盘快捷键组合、深色/浅色主题对照截图、屏幕阅读器朗读、在 Finder/资源管理器中显示与外部应用打开的真实桌面行为（依赖宿主 Session Remote）。这些由实现、静态检查与单元测试覆盖，建议后续抽查。
+
+## 11. 0.2.1 验收记录（2026-11-02）
+
+| 项 | 结果 | 证据 |
+| --- | --- | --- |
+| 菜单表面改用不透明主题层 | 自动化校验通过 | `client-smoke` 断言 `.dfe-menu` 使用 `--dsw-alias-bg-layer-2` 且不含 `--dsw-specific-menu`；GUI 深浅色视觉效果待用户确认 |
+| Host SSE watch 路由 | 通过 | `test/watch.test.js` 9/9：invalidate 帧、401、405、参数矩阵、429 上限、unsupported/degraded、心跳、关闭清理、disposer 注销 |
+| 客户端自动刷新与轮询降级 | 自动化校验通过 | VM 测试：URL 契约、250ms 防抖、unsupported/3 次 error 降级、hidden 暂停、恢复补刷、卸载清理；真实 GUI 联调待用户确认 |
+| keepMounted 状态保持 | 机制已启用 | `client-smoke` 断言 tabType.keepMounted === true；GUI 多标签/预览返回待用户确认 |
+| 全量测试 | 通过 | `node --test test/*.test.js` → 59/59 pass（ops 35 + contract 3 + client-smoke 12 + watch 9） |
+| 版本与 npm 发布 | 待发布 | 0.2.1；npm publish 需账号 2FA |

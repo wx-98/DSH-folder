@@ -7,7 +7,7 @@
 打开任意本地文件夹后可以：
 
 - **VSCode 风格类型图标**：TypeScript / JavaScript / JSON / Markdown / 图片 / 压缩包 / Office / Shell / 配置 / 锁文件等按形状与颜色区分；文件夹有开合两态，`.git`、`node_modules`、`src`、`dist`、`docs`、`config` 使用专属图标（图标子集来自 MIT 许可的 Material Icon Theme，见 [docs/THIRD_PARTY_NOTICES.md](docs/THIRD_PARTY_NOTICES.md)）
-- 树形浏览（懒加载、目录优先排序、隐藏文件可见、手动刷新）
+- 树形浏览（懒加载、目录优先排序、隐藏文件可见；**自动刷新**：watch ≤2s、轮询降级 ≤5s，切换标签/预览后**保留展开、选中与滚动状态**；也可手动刷新）
 - 右键菜单：复制绝对路径 / 复制相对路径、重命名（行内编辑）、新建文件、新建文件夹、删除（二次确认后永久删除）、复制 / 粘贴（冲突策略：保留两者 / 跳过 / 覆盖）、在 Finder/资源管理器中显示
 - 键盘操作：↑/↓ 移动、→/← 展开折叠、Enter 打开、F2 重命名、Delete 删除、Cmd/Ctrl+C / V 复制粘贴、Esc 关闭浮层
 - **添加到对话（Add to Chat）**：文件树右键、已打开文件的预览头部按钮或 tab 右键，把文件/文件夹作为 `@` 引用直接放进当前会话的聊天输入框（类似 Cursor；不读取文件内容、不自动发送、保留已有草稿）
@@ -72,7 +72,7 @@ git clone https://github.com/wx-98/DSH-folder.git dsh-folder
 
 - 目标 DSH 0.2.1-rc.5；依赖其公开扩展点（`sidebarRightTabs`、`slots`、`webServer`、`connection`、`remote.session`），DSH 升级后建议重新回归。
 - 删除为**永久删除**（有二次确认），暂不进入废纸篓；
-- 暂不支持拖拽移动、多选批量、外部变更自动监听、全文搜索（后续里程碑）；
+- 暂不支持拖拽移动、多选批量、全文搜索、跨根全局索引（后续里程碑）；
 - “用外部应用打开”依赖宿主提供 Session Remote，不可用时菜单项隐藏。
 
 更多设计细节与验收记录见 [docs/folder-explorer-plugin.md](docs/folder-explorer-plugin.md)；图标机制与清单见 [docs/file-icons.md](docs/file-icons.md)；「添加到对话」说明见 [docs/add-to-chat.md](docs/add-to-chat.md)。
@@ -82,6 +82,12 @@ git clone https://github.com/wx-98/DSH-folder.git dsh-folder
 - GitHub topic：[`dsh-plugin`](https://github.com/topics/dsh-plugin)（已设置）
 - 列表收录：[awesome-dsh-plugin PR #11102](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin/pull/11102)（提交于 2026-11-01；唯一 CI 门槛是仓库创建未满 1 天，约 19 小时后自动复跑通过，无需重提）
 - 注册登记：[DSH Plugin Registry（dshplugin.world）](https://dshplugin.world/submit) 的 Submit 流程：仓库 issue [#1](https://github.com/wx-98/DSH-folder/issues/1) 已提交；官方 discussions ping 受 deepseek-ai 组织 OAuth App 访问限制（issue 路径与 dsh-plugin topic 抓取已覆盖提交）
+
+## 更新记录
+
+- **0.2.1**（2026-11-02）：修复右键菜单半透明导致的文字不清（改用不透明主题层）；新增自动刷新（Host SSE watch，变化后 ≤2s 出现；不可用时 ≤5s 轮询降级）；文件预览/标签切换返回时保留展开集合、选中行与滚动位置（`keepMounted`）。
+- **0.2.0**（2026-11-01）：包名改为 `dsh-folder-explorer`，发布 npm；新增「添加到对话」与类型图标。
+- **0.1.0**（2026-11-01）：首个版本。
 
 ## 仓库结构
 

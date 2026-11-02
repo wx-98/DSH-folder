@@ -20,6 +20,8 @@ window.__ModuleLoader__.load({
     const ROOT_STORAGE_KEY = "dsh.folder-explorer.root.v1";
     /** How many entries a directory listing may carry before the Host truncates it. */
     const MAX_ENTRIES = 2000;
+    /** Polling interval used when the Host watcher is unavailable. */
+    const WATCH_POLL_MS = 3000;
     const BODY_SLOT = "sidebar.right.pane.tab";
     const TITLE_SLOT = "sidebar.right.pane.tab.title";
     const STYLE_TAG = ID + "/styles";
@@ -167,6 +169,11 @@ window.__ModuleLoader__.load({
     function fileAddress(sessionId, path) {
       const normalized = String(path).replace(/\\/g, "/");
       return "dsh-resource://file/session/" + encodeSegment(sessionId) + "/" + encodePath(normalized);
+    }
+
+    /** Relative SSE URL for one root; no leading slash, matching the fetch routes. */
+    function buildWatchUrl(root) {
+      return "folder-explorer/watch?root=" + encodeURIComponent(root);
     }
 
     /** One path segment accepted as a new name; returns a stable error code or null. */
@@ -1590,7 +1597,7 @@ window.__ModuleLoader__.load({
       ".dfe-btn--danger:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover-danger,rgba(207,34,46,.1))}",
       ".dfe-rename-input{flex:1 1 auto;min-width:0;height:22px;padding:0 4px;border:1px solid var(--dsw-focus-ring-color,#4a7dff);border-radius:var(--dsw-radius-xs,4px);background:var(--dsw-alias-bg-base,#fff);color:var(--dsw-alias-label-primary,#1f2328);font:inherit;box-sizing:border-box}",
       ".dfe-rename-error{flex:none;display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;background:var(--dsw-alias-state-error-primary,#cf222e);color:var(--dsw-alias-label-primary-inverted,#fff);font-size:11px;font-weight:700;cursor:help}",
-      ".dfe-menu{position:fixed;z-index:60;min-width:200px;max-width:calc(100vw - 16px);max-height:calc(100vh - 16px);overflow:auto;padding:4px;border-radius:var(--dsw-radius-md,8px);border:.5px solid var(--dsw-alias-border-l3,rgba(0,0,0,.1));background:var(--dsw-specific-menu,var(--dsw-alias-bg-layer-2,#fff));box-shadow:var(--dsw-elevation-prominent,0 8px 24px rgba(0,0,0,.18));outline:none;box-sizing:border-box}",
+      ".dfe-menu{position:fixed;z-index:60;min-width:200px;max-width:calc(100vw - 16px);max-height:calc(100vh - 16px);overflow:auto;padding:4px;border-radius:var(--dsw-radius-md,8px);border:.5px solid var(--dsw-alias-border-l3,rgba(0,0,0,.1));background:var(--dsw-alias-bg-layer-2,#fff);background-clip:padding-box;box-shadow:var(--dsw-elevation-prominent,0 8px 24px rgba(0,0,0,.18));outline:none;box-sizing:border-box}",
       ".dfe-menu-item{display:flex;align-items:center;gap:8px;width:100%;padding:5px 10px;border:0;border-radius:var(--dsw-radius-sm,6px);background:transparent;color:var(--dsw-alias-label-primary,#1f2328);font:inherit;font-size:12px;text-align:left;cursor:pointer;white-space:nowrap;box-sizing:border-box}",
       ".dfe-menu-item:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover,rgba(0,0,0,.06))}",
       ".dfe-menu-item:disabled{opacity:.45;cursor:default}",
@@ -2500,6 +2507,7 @@ window.__ModuleLoader__.load({
       const useSessions = typeof props.useSessions === "function" ? props.useSessions : NO_SESSIONS;
       const useTabInfo = typeof props.useTabInfo === "function" ? props.useTabInfo : NO_TAB_INFO;
       const tabInfo = useTabInfo();
+      const tabVisible = !(tabInfo && tabInfo.tab && tabInfo.tab.visible === false);
       const providedT = typeof props.t === "function" ? props.t : defaultTranslate;
       const cwd = useSessionCwd(useSessions, sessionId);
 
@@ -2515,8 +2523,11 @@ window.__ModuleLoader__.load({
       const tRef = React.useRef(providedT);
       const actionsRef = React.useRef(null);
       const toastSeqRef = React.useRef(0);
+      const tabVisibleRef = React.useRef(true);
+      const watchResumeRef = React.useRef(null);
 
       tRef.current = providedT;
+      tabVisibleRef.current = tabVisible;
 
       const rootState = React.useState(function () {
         const stored = readStoredRoot();
@@ -2705,6 +2716,132 @@ window.__ModuleLoader__.load({
         if (root !== null) return;
         if (typeof cwd === "string" && isAbsolutePath(cwd)) setRoot(cwd);
       }, [cwd, root]);
+
+      React.useEffect(function () {
+        if (root === null) return undefined;
+        const runtime = { disposed: false, mode: "watch", es: null, debounce: null, poll: null, errors: 0 };
+        function visible() {
+          try {
+            if (typeof document !== "undefined" && document.visibilityState === "hidden") return false;
+          } catch (error) {
+            // An unreadable document still counts as visible.
+          }
+          return tabVisibleRef.current !== false;
+        }
+        function silentRefresh() {
+          if (runtime.disposed || !mountedRef.current) return;
+          try {
+            refreshAll();
+          } catch (error) {
+            // Auto refresh never surfaces an exception.
+          }
+        }
+        function scheduleRefresh() {
+          if (runtime.debounce !== null) clearTimeout(runtime.debounce);
+          runtime.debounce = setTimeout(function () {
+            runtime.debounce = null;
+            silentRefresh();
+          }, 250);
+        }
+        function stopPolling() {
+          if (runtime.poll === null) return;
+          clearInterval(runtime.poll);
+          runtime.poll = null;
+        }
+        function closeSource() {
+          if (runtime.es === null) return;
+          try {
+            runtime.es.close();
+          } catch (error) {
+            // An already-closed source is harmless.
+          }
+          runtime.es = null;
+        }
+        function pollTick() {
+          if (runtime.disposed || !visible()) return;
+          silentRefresh();
+        }
+        function startPolling() {
+          if (runtime.poll !== null || typeof setInterval !== "function") return;
+          try {
+            runtime.poll = setInterval(pollTick, WATCH_POLL_MS);
+          } catch (error) {
+            runtime.poll = null;
+          }
+        }
+        function enterPolling() {
+          if (runtime.disposed || runtime.mode === "poll") return;
+          runtime.mode = "poll";
+          closeSource();
+          startPolling();
+        }
+        function onError() {
+          if (runtime.disposed || runtime.mode !== "watch") return;
+          runtime.errors += 1;
+          if (runtime.errors >= 3) enterPolling();
+        }
+        function onFresh() {
+          runtime.errors = 0;
+          scheduleRefresh();
+        }
+        function resume() {
+          if (runtime.disposed || !visible()) return;
+          silentRefresh();
+        }
+        function connect() {
+          const Source = typeof EventSource === "function" ? EventSource : typeof window !== "undefined" ? window.EventSource : undefined;
+          if (typeof Source !== "function") {
+            enterPolling();
+            return;
+          }
+          try {
+            const source = new Source(buildWatchUrl(root));
+            runtime.es = source;
+            source.addEventListener("open", function () {
+              runtime.errors = 0;
+            });
+            source.addEventListener("invalidate", onFresh);
+            source.addEventListener("message", onFresh);
+            source.addEventListener("unsupported", enterPolling);
+            source.addEventListener("error", onError);
+          } catch (error) {
+            enterPolling();
+          }
+        }
+        watchResumeRef.current = resume;
+        function onVisibilityChange() {
+          resume();
+        }
+        try {
+          if (typeof document !== "undefined" && typeof document.addEventListener === "function") {
+            document.addEventListener("visibilitychange", onVisibilityChange);
+          }
+        } catch (error) {
+          // Visibility events are optional.
+        }
+        connect();
+        return function () {
+          runtime.disposed = true;
+          if (runtime.debounce !== null) clearTimeout(runtime.debounce);
+          runtime.debounce = null;
+          stopPolling();
+          closeSource();
+          watchResumeRef.current = null;
+          try {
+            if (typeof document !== "undefined" && typeof document.removeEventListener === "function") {
+              document.removeEventListener("visibilitychange", onVisibilityChange);
+            }
+          } catch (error) {
+            // Ignore removal failures.
+          }
+        };
+      }, [root, loadLevel]);
+
+      React.useEffect(function () {
+        if (!tabVisible) return;
+        const resume = watchResumeRef.current;
+        if (typeof resume === "function") resume();
+      }, [tabVisible]);
 
       const rows = React.useMemo(function () {
         return buildRows(levels, expanded, root);
@@ -3890,6 +4027,7 @@ window.__ModuleLoader__.load({
         return ctx.sidebarRightTabs.register({
           id: ID,
           kind: KIND,
+          keepMounted: true,
           title: function () {
             return t("type.label");
           },
@@ -3935,7 +4073,7 @@ window.__ModuleLoader__.load({
       apply: apply,
       // Offline test hook only: undefined unless the harness explicitly opts in.
       __test: typeof window !== "undefined" && window.__DFE_TEST__ === true
-        ? { resolveIcon: resolveIcon, ICON_DEFS: ICON_DEFS, FILE_ICON_MAP: FILE_ICON_MAP, FOLDER_ICON_MAP: FOLDER_ICON_MAP, buildMention: buildMention, buildChip: buildChip, parseFileAddress: parseFileAddress, insertChatReference: insertChatReference }
+        ? { resolveIcon: resolveIcon, ICON_DEFS: ICON_DEFS, FILE_ICON_MAP: FILE_ICON_MAP, FOLDER_ICON_MAP: FOLDER_ICON_MAP, buildMention: buildMention, buildChip: buildChip, parseFileAddress: parseFileAddress, insertChatReference: insertChatReference, buildWatchUrl: buildWatchUrl, WATCH_POLL_MS: WATCH_POLL_MS }
         : undefined,
     };
   },

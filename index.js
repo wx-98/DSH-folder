@@ -6,10 +6,12 @@
  * (`ctx.connection.requestRejection`), validates absolute paths against the
  * caller supplied root (design.md D5) and answers with the JSON contract from
  * design.md D10. Mutating routes are serialised through one promise queue.
+ * The watch route (fix-explorer-ux-issues D2) is a long-lived SSE stream.
  *
  * The browser half lives in ./client.js and is discovered through this
  * package's `dsh.client` declaration.
  */
+import { watch as watchFileSystem } from "node:fs";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -109,7 +111,12 @@ function enqueueMutation(task) {
  * @param {unknown} payload
  */
 function sendJson(res, status, payload) {
-  if (res.writableEnded) return;
+  // A response that already started (e.g. an open SSE stream) can no longer
+  // become a JSON error; just end it instead of throwing on sent headers.
+  if (res.writableEnded || res.headersSent) {
+    if (!res.writableEnded) res.end();
+    return;
+  }
   res.statusCode = status;
   res.setHeader("content-type", "application/json; charset=utf-8");
   res.setHeader("cache-control", "no-store");
@@ -514,12 +521,231 @@ async function handleUnknown(req, res) {
 }
 
 // ---------------------------------------------------------------------------
+// SSE watch route (fix-explorer-ux-issues D2)
+// ---------------------------------------------------------------------------
+
+/** Maximum number of concurrent SSE watch connections. */
+const MAX_WATCH_CONNECTIONS = 8;
+
+/** Frames written to a watch stream. */
+const SSE_CONNECTED_FRAME = ": connected\n\n";
+const SSE_INVALIDATE_FRAME = 'data: {"type":"invalidate"}\n\n';
+const SSE_PING_FRAME = ": ping\n\n";
+const SSE_UNSUPPORTED_FRAME = "event: unsupported\ndata: {}\n\n";
+const SSE_DEGRADED_FRAME = "event: degraded\ndata: {}\n\n";
+
+/** Response headers of a successful watch connection. */
+const SSE_HEADERS = Object.freeze({
+  "content-type": "text/event-stream; charset=utf-8",
+  "cache-control": "no-store",
+  connection: "keep-alive",
+  "x-accel-buffering": "no",
+});
+
+/** Error codes meaning "recursive fs.watch is not available on this platform". */
+const UNSUPPORTED_WATCH_CODES = new Set([
+  "ERR_FEATURE_UNAVAILABLE_ON_PLATFORM",
+  "ERR_NOT_IMPLEMENTED",
+  "ERR_UNSUPPORTED_OPERATION",
+  "ENOSYS",
+  "EINVAL",
+]);
+
+/** Active SSE watch connections for this plugin module. */
+const activeWatches = new Set();
+
+/**
+ * Internal seam used by test/watch.test.js.
+ *
+ * The defaults are the production behaviour (200 ms debounce, 25 s heartbeat,
+ * recursive fs.watch). Tests may temporarily override the timing values or the
+ * watcher factory to exercise the heartbeat and the unsupported/degraded
+ * branches without waiting 25 s or owning a Linux host.
+ */
+export const watchInternals = {
+  debounceMs: 200,
+  heartbeatMs: 25_000,
+  createWatcher(realRoot) {
+    return watchFileSystem(realRoot, { recursive: true });
+  },
+  get activeCount() {
+    return activeWatches.size;
+  },
+};
+
+/**
+ * @param {unknown} error
+ * @returns {boolean}
+ */
+function isUnsupportedRecursiveWatch(error) {
+  if (error === null || typeof error !== "object") return false;
+  const code = /** @type {{ code?: unknown }} */ (error).code;
+  return typeof code === "string" && UNSUPPORTED_WATCH_CODES.has(code);
+}
+
+/**
+ * Write one SSE frame. A dead socket must never throw into the host.
+ *
+ * @param {import("node:http").ServerResponse} res
+ * @param {string} frame
+ * @returns {boolean}
+ */
+function writeSseFrame(res, frame) {
+  if (res.writableEnded || res.destroyed) return false;
+  try {
+    res.write(frame);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * End a watch response if it is still open.
+ *
+ * @param {import("node:http").ServerResponse} res
+ */
+function endSseResponse(res) {
+  if (res.writableEnded || res.destroyed) return;
+  try {
+    res.end();
+  } catch {
+    // The connection is already gone; nothing else to do.
+  }
+}
+
+/**
+ * Start one watch connection: recursive watcher, 200 ms debounced invalidate
+ * frames, heartbeat, close cleanup and registration in the active set.
+ *
+ * @param {import("node:http").IncomingMessage} req
+ * @param {import("node:http").ServerResponse} res
+ * @param {string} realRoot
+ * @returns {{ close: () => void, start: () => void }}
+ */
+function startWatchConnection(req, res, realRoot) {
+  let closed = false;
+  /** @type {import("node:fs").FSWatcher | null} */
+  let watcher = null;
+  /** @type {ReturnType<typeof setTimeout> | null} */
+  let debounceTimer = null;
+  /** @type {ReturnType<typeof setInterval> | null} */
+  let heartbeatTimer = null;
+
+  const close = () => {
+    if (closed) return;
+    closed = true;
+    activeWatches.delete(connection);
+    if (debounceTimer !== null) {
+      clearTimeout(debounceTimer);
+      debounceTimer = null;
+    }
+    if (heartbeatTimer !== null) {
+      clearInterval(heartbeatTimer);
+      heartbeatTimer = null;
+    }
+    if (watcher !== null) {
+      const currentWatcher = watcher;
+      watcher = null;
+      try {
+        currentWatcher.close();
+      } catch {
+        // Closing an already closed watcher is harmless.
+      }
+    }
+    endSseResponse(res);
+  };
+
+  const scheduleInvalidate = () => {
+    if (closed || debounceTimer !== null) return;
+    debounceTimer = setTimeout(() => {
+      debounceTimer = null;
+      writeSseFrame(res, SSE_INVALIDATE_FRAME);
+    }, watchInternals.debounceMs);
+    debounceTimer.unref?.();
+  };
+
+  const failWith = (frame) => {
+    if (closed) return;
+    writeSseFrame(res, frame);
+    close();
+  };
+
+  const connection = {
+    close,
+    start() {
+      if (closed) return;
+      try {
+        watcher = watchInternals.createWatcher(realRoot);
+      } catch (error) {
+        failWith(isUnsupportedRecursiveWatch(error) ? SSE_UNSUPPORTED_FRAME : SSE_DEGRADED_FRAME);
+        return;
+      }
+      watcher.on("change", scheduleInvalidate);
+      watcher.on("rename", scheduleInvalidate);
+      watcher.on("error", () => failWith(SSE_DEGRADED_FRAME));
+      heartbeatTimer = setInterval(() => {
+        if (closed) return;
+        writeSseFrame(res, SSE_PING_FRAME);
+      }, watchInternals.heartbeatMs);
+      heartbeatTimer.unref?.();
+    },
+  };
+
+  activeWatches.add(connection);
+  req.on("close", close);
+  res.on("close", close);
+  return connection;
+}
+
+/** Close every active watch connection (called from the plugin disposer). */
+function closeAllWatches() {
+  for (const connection of [...activeWatches]) connection.close();
+}
+
+/**
+ * GET /folder-explorer/watch?root=<abs> - SSE invalidation stream.
+ *
+ * The connection fence, method check and root validation run before any SSE
+ * header is written, so those failures stay normal JSON errors. Once the stream
+ * is open every failure is reported as an SSE event and the response ends.
+ *
+ * @param {import("node:http").IncomingMessage} req
+ * @param {import("node:http").ServerResponse} res
+ */
+async function handleWatch(req, res) {
+  const url = parseRequestUrl(req);
+  const root = await requireRootDirectory(requireQuery(url, "root"));
+  let realRoot;
+  try {
+    realRoot = await fs.realpath(root);
+  } catch (error) {
+    throw toOpError(error);
+  }
+  if (activeWatches.size >= MAX_WATCH_CONNECTIONS) {
+    sendJson(res, 429, { ok: false, code: "busy", message: "too many folder watches" });
+    return;
+  }
+  const connection = startWatchConnection(req, res, realRoot);
+  try {
+    res.writeHead(200, SSE_HEADERS);
+    if (typeof res.flushHeaders === "function") res.flushHeaders();
+  } catch (error) {
+    connection.close();
+    throw error;
+  }
+  writeSseFrame(res, SSE_CONNECTED_FRAME);
+  connection.start();
+}
+
+// ---------------------------------------------------------------------------
 // Route table + registration
 // ---------------------------------------------------------------------------
 const ROUTES = Object.freeze([
   { method: "GET", path: `${PREFIX}/browse`, handler: handleBrowse },
   { method: "GET", path: `${PREFIX}/list`, handler: handleList },
   { method: "GET", path: `${PREFIX}/stat`, handler: handleStat },
+  { method: "GET", path: `${PREFIX}/watch`, handler: handleWatch },
   { method: "POST", path: `${PREFIX}/create`, handler: handleCreate },
   { method: "POST", path: `${PREFIX}/rename`, handler: handleRename },
   { method: "POST", path: `${PREFIX}/delete`, handler: handleDelete },
@@ -575,6 +801,7 @@ export function apply(ctx, _config) {
       `folder-explorer: ${route.method} ${route.path}`,
     );
   }
+  ctx.effect(() => () => closeAllWatches(), "folder-explorer: watch cleanup");
   ctx.effect(
     () =>
       ctx.webServer.register({
