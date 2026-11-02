@@ -290,9 +290,9 @@ window.__ModuleLoader__.load({
 
 | 项 | 结果 | 证据 |
 | --- | --- | --- |
-| 菜单表面改用不透明主题层 | 自动化校验通过 | `client-smoke` 断言 `.dfe-menu` 使用 `--dsw-alias-bg-layer-2` 且不含 `--dsw-specific-menu`；GUI 深浅色视觉效果待用户确认 |
+| 菜单表面改用不透明主题层 | 自动化校验通过 | `client-smoke` 断言 `.dfe-menu` 使用 `--dsw-alias-bg-layer-2` 且不含 `--dsw-specific-menu`；用户已验收：深浅色下菜单背景不透明、文字清晰 |
 | Host SSE watch 路由 | 通过 | `test/watch.test.js` 9/9：invalidate 帧、401、405、参数矩阵、429 上限、unsupported/degraded、心跳、关闭清理、disposer 注销 |
-| 客户端自动刷新与轮询降级 | 自动化校验通过 | VM 测试：URL 契约、250ms 防抖、unsupported/3 次 error 降级、hidden 暂停、恢复补刷、卸载清理；真实 GUI 联调待用户确认 |
-| keepMounted 状态保持 | 机制已启用 | `client-smoke` 断言 tabType.keepMounted === true；GUI 多标签/预览返回待用户确认 |
+| 客户端自动刷新与轮询降级 | 自动化校验通过 | VM 测试：URL 契约、250ms 防抖、unsupported/3 次 error 降级、hidden 暂停、恢复补刷、卸载清理；用户已验收：外部新建/删除文件后树自动更新，无需手动刷新 |
+| keepMounted 状态保持 | 机制已启用 | `client-smoke` 断言 tabType.keepMounted === true；用户已验收：点开文件预览后切回，展开集合/选中行/滚动保持 |
 | 全量测试 | 通过 | `node --test test/*.test.js` → 59/59 pass（ops 35 + contract 3 + client-smoke 12 + watch 9） |
-| 版本与 npm 发布 | 待发布 | 0.2.1；npm publish 需账号 2FA |
+| 版本与 npm 发布 | 通过 | `dsh-folder-explorer@0.2.1` 已发布（registry latest，2026-11-02T14:02Z）；GitHub main `0e604b2`；fresh install 验证包含 watch 路由、keepMounted 与不透明菜单 |
